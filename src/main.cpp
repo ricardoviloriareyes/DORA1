@@ -1,4 +1,4 @@
-//DUELO_MASTER_01_DORA
+//DORA VERSION 1
 #include <Arduino.h>
 // TARJETA DE MEMORIA
 #include <SPI.h>
