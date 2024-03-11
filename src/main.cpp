@@ -1,4 +1,5 @@
-//DORA VERSION 1
+// DORA VERSION 1
+/* Se cambia toda la navegacion mediante un mapa de control*/
 #include <Arduino.h>
 // TARJETA DE MEMORIA
 #include <SPI.h>
@@ -43,13 +44,15 @@ const int daylightOffset_sec = 0; // falta el void de ajuste verano +3600
 
 // seleccion de juego por WebServer
 int num_juego = 1;
+
+#define CERO 0
 #define UNO 1
 #define DOS 2
 #define CUATRO 4
 #define OCHO 8
 
 // seleccion de tipo de round
-#define VELOCIDAD_Y_RAFAGA 1
+#define HIBRIDO 1
 #define TIROS_POR_RAFAGA 3
 #define TIRADOR_1 1
 #define TIRADOR_2 2
@@ -64,8 +67,11 @@ int num_juego = 1;
 #define DUELO_FINAL_NO 0
 
 // posicion de jugador en matriz TiradoresRojo[] o TiradoresAzul[]
-#define GANADOR_EN_POSICION_ROJO 1
+#define GANADOR_A_POSICION_ROJO 1
 #define GANADOR_A_POSICION_AZUL 2
+
+// Cantidad de duelos por juego
+#define CUATRO_DUELOS 4
 
 // cantidad de round por duelo
 #define REALIZA_3_ROUNDS 3
@@ -86,7 +92,7 @@ int num_juego = 1;
 #define GANADOR_A_DUELO_5 5
 #define GANADOR_A_DUELO_6 6
 #define GANADOR_A_DUELO_7 7 // sin usar
-#define GANADOR_CASILLA_8 8
+#define GANADOR_A_CASILLA_8 8
 
 #define VERDE 1
 #define AZUL 2
@@ -153,7 +159,6 @@ void ejecutajuegoOcho();
 void muestraGanadorjuego4y8();
 void muestraGanadorjuego2();
 void acumulaDatosParajuego1y2();
-void esperaFirmaJugadores(int Ref_duelo, int duelo_final, int tirador_rrojo, int tiradorazul, int num_rounds);
 void ejecutaCiclosRound();
 void ejecutaDuelo(int juego, int Ref_duelo, int duelo_final, int tirador_rrojo, int tiradorazul, int tipoduelo,
                   int tirosrafaga, int num_rounds, int segundosentrerouds, int nuevoduelo, int posicioncolor);
@@ -164,6 +169,17 @@ void solicitaFirmaAzul(int Ref_duelo, int tiradorazul, int num_rounds);
 void recibeFirmaAzul();
 void enciendeBox(int tipoencendido, int verde);
 void mensajeSolicitudFirma();
+void reiniciaDatosJuego1();
+void reiniciaDatosJuego2();
+void reiniciaDatosJuego4();
+void reiniciaDatosJuego8();
+void reiniciar_jugadores_todos_los_juegos();
+void reiniciaBasesJuegoUNO();
+
+// DORA VOID -------------------
+void iniciaJuegoUno();
+void reiniciaCondicionesJuego1();
+// dora fin void ++++++++++++++++++++++
 
 // reloj para mensajes y led
 ulong previous_time, current_time; // para sincronizar encendido led y duracion de mensajes matriz
@@ -173,7 +189,7 @@ typedef struct flag_listo
 {
   int rojolisto; // Duelo tirador rojo  listo 0,1
   int azullisto; // Duelo tirador azul listo  0,1
-  int numduelos;
+  int numduelo;
   int numjugador;
 } flag_listo;
 flag_listo MasterBanderasDuelo;
@@ -191,12 +207,6 @@ typedef struct send_master_round_param
 } send_master_round_param;
 send_master_round_param ParametrosParaCadaRound;
 
-// direccion MAC del receptor
-/*en ejemplo se pone la direccion MAC del receptor ( 30:AE:A4:07:0D:64)
-debe cambiarse por la nueva del receptor  ver nota 1*/
-
-uint8_t broadcastAddress[] = {0x30, 0xAE, 0xA4, 0x07, 0x0D, 0x64};
-
 void iniciaDatosBanderasDuelo()
 { // reinicia estructuras de banderas de inicio de duelo
   MasterBanderasDuelo.rojolisto = 0;
@@ -213,6 +223,45 @@ void iniciaDatosBanderasDuelo()
   AzulBanderasDuelo.numjugador = 0;
 }
 
+// direccion MAC del receptor
+/*en ejemplo se pone la direccion MAC del receptor ( 30:AE:A4:07:0D:64)
+debe cambiarse por la nueva del receptor  ver nota 1*/
+
+uint8_t broadcastAddress[] = {0x30, 0xAE, 0xA4, 0x07, 0x0D, 0x64};
+
+// DORA INICIA- PARAMETROS ------------------------------------
+
+typedef struct struct_mapa
+{
+  int juego;          // Estacion1
+  int ubicacionjuego; // apuntador de estacion d
+
+  int numerodeduelos; // parametro de cantidad de duelos
+  int dueloactual;    // posicion del duelo a realizar
+
+  int numeroderounds; // cantidad de rounds por duelo
+  int roundactual;    // round que se realizara
+
+  int nround;   // round a pelear
+  int tipo;     // tipo de round
+  int nrafaga;  // num de tiros en caso de round de rafaga
+  int segpausa; // espera entre rounds
+
+} struct_mapa;
+struct_mapa Mapa;
+
+void reiniciarvaloresMapa()
+{
+  Mapa.juego = 0;
+  Mapa.ubicacionjuego = 1;
+  Mapa.numerodeduelos = 0;
+  Mapa.dueloactual = 0;
+  Mapa.roundactual = 1;
+  Mapa.numeroderounds = 0;
+}
+
+// DORA FINAL PARAMETROS ++++++++++++++++++++++++++++++++++++++++++
+
 void setup()
 { // Inicia comunicación serial
   Serial.begin(115200);
@@ -227,18 +276,29 @@ void setup()
 
   // Inicia Reloj
   ESP32Time rtc32;
+
+  // Dora inicio setup-------------------------
+  reiniciarvaloresMapa();
+
+  // Dora final SETUP +++++++++++++++++++++++++
+
   // Inicia los valores de las estructuras de banderas
   iniciaDatosBanderasDuelo();
 }
 
 void loop()
-{ //
+{
   current_time = millis();
-  switch (num_juego) // se selecciona mediante pagina web
+  switch (Mapa.juego)
   {
+  case CERO: // información de la empresa
+  {
+    mensajeBienvenida();
+    break;
+  }
   case UNO:
   {
-    ejecutajuegoUno();
+    iniciaJuegoUno();
     break;
   }
   case DOS:
@@ -259,6 +319,106 @@ void loop()
   }
 }
 
+// Dora inicio voids----------------------------------
+void mensajeBienvenida()
+{
+  // En equipo rojo se pone menasje de la empresa, distribución y pagina web
+}
+
+void iniciajuegoUno()
+{
+  switch (Mapa.ubicacionjuego)
+  {
+  case 1:
+  { //  Ubicacion 1 .- Parametros para inciar el juego
+    reiniciaBasesJuegoUNO();
+    Mapa.numerodeduelos = 5;
+    Mapa.dueloactual = 1;
+    Mapa.numeroderounds = 3;
+    Mapa.roundactual = 1;
+    Mapa.segpausa = 5;
+    Mapa.ubicacionjuego = 2; // brinca siguiente opcion case
+    break;
+  }
+  case 2:
+  { // Ubicacion 2 .- Firma de jugadores listos mediante laser
+    if ((jugadorRojoPreparado() == SI) & (jugadorAzulPreparado() == SI))
+    {
+      Mapa.ubicacionjuego = 3; // brinca siguiente opcion case
+    }
+    break;
+  }
+  case 3:
+  { // Ubicacion 3 .- control de duelos
+    iniciaduelos();
+    break;
+  }
+  }
+}
+
+void iniciaduelos()
+{ // Control con duelos a realizar y num de duelo
+  switch (Mapa.numerodeduelos)
+  {
+  case 1: // duelo 1 - Tirador 1 vs tirador 0  si ganador suma a duelos_ganados_rojo o duelos_ganados_azul
+  {
+    iniciaround();
+    acumulaDatosParajuego1y2();
+    break;
+  }
+
+  case 8: // Resultados final con ganador juego en posicion TiradoresRojo[8]
+  {
+    muestraGanadorjuego2(); // datos obtenidos de duelos_ganados_rojo y duelos_ganados_azul
+    reiniciar_jugadores_todos_los_juegos();
+
+    break;
+  }
+  default:
+  {
+    Serial.println(" Error 001 - NO de duelo desconocido en CASE");
+    break;
+  }
+  }
+} // fin Estacion3
+
+int jugadorRojoPreparado()
+{
+  return SI;
+}
+
+int jugadorAzulPreparado()
+{
+  return SI;
+}
+
+void reiniciaBasesJuegoUNO()
+{
+  // base de jugadores y orden de rounds
+  TiradoresRojo[0] = 1;
+  TiradoresRojo[1] = 1;
+  TiradoresRojo[2] = 1;
+  TiradoresRojo[3] = 1;
+  TiradoresRojo[4] = 1;
+  TiradoresAzul[0] = 0;
+  TiradoresAzul[1] = 0;
+  TiradoresAzul[2] = 0;
+  TiradoresAzul[3] = 0;
+  TiradoresAzul[4] = 0;
+
+  // acumuladores solo para juego1 y juego2
+  duelos_ganados_rojo = 0;
+  duelos_ganados_azul = 0;
+  round_ganados_rojo = 0;
+  round_ganador_azul = 0;
+  mejor_velocidad_rojo = 0;
+  mejor_rafaga_rojo = 0;
+  mejor_velocidad_azul = 0;
+  mejor_rafaga_azaul = 0;
+}
+
+// Dora final ------------------
+
 void ejecutajuegoUno()
 {
   if (reiniciar_jugadores_juego_1 == SI)
@@ -270,36 +430,36 @@ void ejecutajuegoUno()
   {
   case 0: // duelo 0 - Tirador 1 vs tirador 0  ganador a TiradoresRojo[8]
   {
-    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 1: // duelo 1 tirador 1 vs tirador 0  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 2: // duelo 1 tirador 1 vs tirador 0  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 3: // duelo 3  tirador 1 vs tirador 0  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 4: // duelo 4 tirador 1 vs tirador 0  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_1, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
@@ -357,36 +517,36 @@ void ejecutajuegoDos()
   {
   case 0: // duelo 0 - Tirador 1 vs tirador 2  ganador a TiradoresRojo[8]
   {
-    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 1: // duelo 1 tirador 1 vs tirador 2  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 2: // duelo 2 es el final , define al ganadorjuego
   {
-    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 3: // duelo 3 tirador 1 vs tirador 2  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
   case 4: // duelo 4 tirador 1 vs tirador 2  ganador a ROJO[8]
   {
-    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_2, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_3_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     acumulaDatosParajuego1y2();
     break;
   }
@@ -454,20 +614,20 @@ void ejecutajuegoCuatro()
   {
   case 0: // duelo 0 - Tirador 1 vs tirador 2  ganador a TiradoresRojo[2]
   {
-    ejecutaDuelo(juego_4, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_7_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_2, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_4, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_7_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_2, GANADOR_A_POSICION_ROJO);
     break;
   }
   case 1: // duelo 1 tirador 3 vs tirador 4  ganador a TiradoresAzul[2]
   {
-    ejecutaDuelo(juego_4, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
+    ejecutaDuelo(juego_4, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
                  REALIZA_7_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_2, GANADOR_A_POSICION_AZUL);
     break;
   }
   case 2: // duelo 2 es el final , define al ganadorjuego
   {
-    ejecutaDuelo(juego_4, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_7_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_4, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_7_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_ROJO);
     break;
   }
   case 8: // Resultados de ganador juego en posicion TiradoresRojo[8]
@@ -507,44 +667,44 @@ void ejecutajuegoOcho()
   {
   case 0: // duelo 0 - Tirador 1 vs tirador 2  ganador a TiradoresRojo[4]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_4, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_4, GANADOR_A_POSICION_ROJO);
     break;
   }
   case 1: // duelo 1 tirador 3 vs tirador 4  ganador a TiradoresAzul[4]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
                  REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_4, GANADOR_A_POSICION_AZUL);
     break;
   }
   case 2: // duelo 2 tirador 5 vs tirador 6 ganador a TiradoresRojo[5]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_5, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_5, GANADOR_A_POSICION_ROJO);
     break;
   }
   case 3: // duelo 3 tirador 7 vs tirador 8 ganador a TiradoresAzul[5]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
                  REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_5, GANADOR_A_POSICION_AZUL);
     break;
   }
   case 4: // duelo 4  ganador DUELO 0 vs ganador DUELO 1  ganador a TiradoresRojo[6]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_6, GANADOR_EN_POSICION_ROJO);
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_6, GANADOR_A_POSICION_ROJO);
     break;
   }
   case 5: // duelo 5  ganador DUELO 2 vs ganador DUELO 3  ganador a TiradoresAzul[6]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_NO, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
                  REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_DUELO_6, GANADOR_A_POSICION_AZUL);
     break;
   }
   case 6: // duelo 6  ganador DUELO 4 vs ganador DUELO 5  ganador a TiradoresRojo[8]
   {
-    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], VELOCIDAD_Y_RAFAGA, TIROS_POR_RAFAGA,
-                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_CASILLA_8, GANADOR_A_POSICION_AZUL);
+    ejecutaDuelo(juego_8, num_duelo, DUELO_FINAL_SI, TiradoresRojo[num_duelo], TiradoresAzul[num_duelo], HIBRIDO, TIROS_POR_RAFAGA,
+                 REALIZA_5_ROUNDS, SEG_PAUSA_ENTRE_ROUNDS, GANADOR_A_CASILLA_8, GANADOR_A_POSICION_AZUL);
     break;
   }
   case 8: // Resultados de ganador de juego en posicion TiradoresRojo[8]
@@ -587,11 +747,11 @@ void ejecutaDuelo(int ref_duelo, int duelo_final, int tirador_rojo, int tiradora
   tiradores_preparados = NO;
   do
   {
-    enviaSolicitudListorojo(ref_duelo,tirador_rojo);
-    enviaSolicitudListoazul(ref_duelo,tirador_azul);
-    recibeSolicitudListorojo(); // recibe y cambia MasterBanderaDuelo.rojolisto=SI
-    recibeSolicitudListoazul(); // recibe y cambia MasterBanderaDuelo.azullisto=SI
-    if ((MasterBanderasDuelo.rojolisto == SI) & (MasterBanderasDuelo.azullisto = 0; == SI))
+    // enviaSolicitudListorojo(ref_duelo,tirador_rojo);
+    // enviaSolicitudListoazul(ref_duelo,tirador_azul);
+    // recibeSolicitudListorojo(); // recibe y cambia MasterBanderaDuelo.rojolisto=SI
+    // recibeSolicitudListoazul(); // recibe y cambia MasterBanderaDuelo.azullisto=SI
+    if ((MasterBanderasDuelo.rojolisto == SI) & (MasterBanderasDuelo.azullisto == SI))
     {
       tiradores_preparados = SI;
     }
@@ -599,10 +759,10 @@ void ejecutaDuelo(int ref_duelo, int duelo_final, int tirador_rojo, int tiradora
 
   do
   {
-    enviaaRojoSolicitudIniciaRound();
-    enviaaAzulSolicitudIniciaRound();
-    recibeconfirmaciónInicioRojo();
-    recibeconfirmaciónInicioAzul();
+    /*enviaaRojoSolicitudIniciaRound();
+    //enviaaAzulSolicitudIniciaRound();
+    //recibeconfirmaciónInicioRojo();
+    //recibeconfirmaciónInicioAzul();*/
   } while (terminaron_rounds == NO);
 
   if (terminaron_rounds == SI)
@@ -616,7 +776,7 @@ void ejecutaDuelo(int ref_duelo, int duelo_final, int tirador_rojo, int tiradora
       ganador_duelo = TiradoresAzul[num_duelo];
     }
     /* ahora lo manda al ganador a un nuevo duelo y en la posición de color definida*/
-    if (posicioncolor == GANADOR_EN_POSICION_ROJO)
+    if (posicioncolor == GANADOR_A_POSICION_ROJO)
     {
       TiradoresRojo[nuevoduelo] = ganador_duelo;
     }
@@ -714,8 +874,8 @@ void round()
 {
   if (!tiradores_preparados)
   {
-    solicitaPrepararse();
-    recibeRespuesta();
+    // solicitaPrepararse();
+    // recibeRespuesta();
   }
   else
   {

@@ -1,0 +1,36 @@
+Definiciones importantes:
+estructura de matriz como mapa para saber donde estas y donde debe de continua 
+cada vuelta del loop
+
+
+
+Navegación:
+Descripcion de navegacion
+Se elabora una ruta como la de Dora la exploradora para:
+1) Conocer hasta donde vas a avanzar segun un mapa cada loop
+2) Evitar tener do-whiles que afecta a otros procesos paralelos como mensajes y leds
+3) Tener un codigo mucho mas sencillo y estructurado
+
+Salida
+
+1) Seleccion de Juego 
+Para avanzar en el mapa se selecciona el Juego dentro de un case mediante la varible
+int mapa.salida / 1,2,4,8
+este campo se cambiara solo con la hoja web
+a) Al cambiar el juego en la hoja Web debe reiniciar los valores del mapa a 0 todos
+b) Debe sustituir el valor de mapa.juego=(1,2,4,8)
+Nota:
+c) al terminarse cada juego debe regresar a juego0 para mensaje de espera en equipos
+int mapa.reiniciar_mapa /0:NO 1:SI
+en el loop se tiene un switch de los 4 juegos
+avanza en el mapa
+
+
+
+
+
+
+Contenido del loop:
+
+1) un contador de millis() para tener un reloj que sirva para las rutinas de espera, flasheo
+de leds, mensajes en matriz de led.
