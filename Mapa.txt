@@ -12,8 +12,8 @@ Se elabora una ruta como la de Dora la exploradora para:
 3) Tener un codigo mucho mas sencillo y estructurado
 
 Salida
-
-1) Seleccion de Juego 
+Juegos Salas
+1) Sala 1 Seleccion de Juego 
 Para avanzar en el mapa se selecciona el Juego dentro de un case mediante la varible
 int mapa.salida / 1,2,4,8
 este campo se cambiara solo con la hoja web
@@ -24,6 +24,7 @@ c) al terminarse cada juego debe regresar a juego0 para mensaje de espera en equ
 int mapa.reiniciar_mapa /0:NO 1:SI
 en el loop se tiene un switch de los 4 juegos
 avanza en el mapa
+2) Sala 2
 
 
 
@@ -34,3 +35,6 @@ Contenido del loop:
 
 1) un contador de millis() para tener un reloj que sirva para las rutinas de espera, flasheo
 de leds, mensajes en matriz de led.
+
+control de mensajes
+
