@@ -224,15 +224,10 @@ ulong contador_inicial_008 = 0;
 ulong contador_actual_008 = 0;
 ulong duracion_mensaje_008 = 5000; // timeout o deteccion de 2 tiro
 
-
 bool comienza_mensaje_009 = true; // Mensaje de ganador
 ulong contador_inicial_009 = 0;
 ulong contador_actual_009 = 0;
 ulong duracion_mensaje_009 = 3000; // Salida a 3 segundos
-
-
-
-
 
 bool detecta_impacto = false; // detecta el impacto
 
@@ -571,9 +566,8 @@ void ejecutandoRounds() // Del 1 al 5
     }
     case 8:
     {
-      //muestra 4 disparo en caso de ampliar la condicion del jeugo
+      // muestra 4 disparo en caso de ampliar la condicion del jeugo
       break;
-
     }
     case 10: // fin de round
     {
@@ -753,7 +747,7 @@ void mensaje2Verdes_007() // espera segundo disparo
   }
   else // no se ejectua al menos que sean la rafaga de dos disparos
   {
-   Mapa.avanceprocesotiros = 10; // avanza a fin de round
+    Mapa.avanceprocesotiros = 10; // avanza a fin de round
   }
 }
 
@@ -782,7 +776,7 @@ void mensaje1Verdes_008() // espera tercer disparo
   }
   else // detecto 3 disparos y avanza a final de round
   {
-   Mapa.avanceprocesotiros = 10; // avanza a fin de round
+    Mapa.avanceprocesotiros = 10; // avanza a fin de round
   }
 }
 
@@ -803,22 +797,15 @@ void mensajeFinRound_009()
   {
     // Salida de mensaje y avanza a primer round
     Mapa.avanceprocesotiros = 0; // regresa el round a cero
-    Mapa.dueloactual++; // incrementa el numero de duelo actual para iniciar un nuevo duelo
+    Mapa.dueloactual++;          // incrementa el numero de duelo actual para iniciar un nuevo duelo
   }
 }
 
-
-
-void escribeCuadroRojo008(){
-
+void escribeCuadroRojo007()
+{
 }
-
-void escribeMensaje008(){
-
-}
-
-void escribeMensaje009(){
-
+void escribeCuadroRojo008()
+{
 }
 
 void analizaImpacto()
@@ -854,9 +841,22 @@ void escribeMensaje005()
 { // 1_1_1
 }
 
-void escribeMensaje006()
-{ // 3 bloques verdes para marcar el incio del tiro
+void escribeMensaje006()  // 3 bloques verdes para marcar el incio del tiro
+{ 
 }
+void escribeMensaje007() // 2 bloques verdes y 1 azul para marcar 1 impacto ya
+{
+}
+
+
+void escribeMensaje008()
+{
+}
+
+void escribeMensaje009()
+{
+}
+
 
 void mensajeDeListoTiradores()
 {
