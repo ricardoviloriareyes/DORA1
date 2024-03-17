@@ -38,3 +38,8 @@ de leds, mensajes en matriz de led.
 
 control de mensajes
 
+Pendiente 14 Marzo
+Sigue el acumular los resultados del juego 1 y mostrar al ganador
+despues descontar creditos
+regresar a menu principal de bienvenida
+

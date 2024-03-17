@@ -482,11 +482,13 @@ void ejecutandoDuelosUNO()  // Dora
 // subrutinas copartidas por juegos
 int jugadorRojoPreparado() // Dora
 {
+  // informacion local de estado
   return SI;
 }
 
 int jugadorAzulPreparado() // Dora
 {
+  // información obtenida mediante espnow
   return SI;
 }
 
@@ -901,6 +903,7 @@ void reiniciaDatosJuego1()
 
 // Dora final ------------------
 
+// revisar los que se eliminan ya que no tienen uso casi todos
 void ejecutajuegoDos()
 {
   if (reiniciar_jugadores_juego_2 == SI)
