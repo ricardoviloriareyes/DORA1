@@ -178,12 +178,18 @@ void reiniciaDatosJuego8();
 void reiniciaDatosJuegoDoraUNO();
 
 // DORA VOID -------------------
+// Control de duelos ganados
+int duelosGanadosRojo[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+int duelosGanadosAzul[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+int roundGanadosRojo[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 void iniciaJuegoUno();
 void reiniciaCondicionesJuego1();
 void ejecutandoRounds();
 void ejecutandoDuelosUNO();
 
 // control de inicio de mensajes toda la aplicacion
+
 bool comienza_mensaje_001 = true; // Mensaje de listos para iniciar duelo
 ulong contador_inicial_001 = 0;
 ulong contador_actual_001 = 0;
@@ -224,17 +230,49 @@ ulong contador_inicial_008 = 0;
 ulong contador_actual_008 = 0;
 ulong duracion_mensaje_008 = 5000; // timeout o deteccion de 2 tiro
 
-bool comienza_mensaje_009 = true; // Mensaje de ganador
+bool comienza_mensaje_009 = true; // Mensaje tiempo de tiro
 ulong contador_inicial_009 = 0;
 ulong contador_actual_009 = 0;
 ulong duracion_mensaje_009 = 3000; // Salida a 3 segundos
+bool detecta_impacto = false;      // detecta el impacto
 
-bool detecta_impacto = false; // detecta el impacto
+bool comienza_mensaje_010 = true; // Mensaje soliciud tiempo azul ESPNOW
+ulong contador_inicial_010 = 0;
+ulong contador_actual_010 = 0;
+ulong duracion_mensaje_010 = 3000; // Salida a 3 segundos
+
+bool comienza_mensaje_011 = true; // <Mensaje ganador
+ulong contador_inicial_011 = 0;
+ulong contador_actual_011 = 0;
+ulong duracion_mensaje_011 = 3000; //
+
+bool comienza_mensaje_100 = true; // mensaje nombre del juego
+ulong contador_inicial_100 = 0;
+ulong contador_actual_100 = 0;
+ulong duracion_mensaje_100 = 3000;
+
+bool comienza_mensaje_101 = true; // mensaje Krambit Systems
+ulong contador_inicial_101 = 0;
+ulong contador_actual_101 = 0;
+ulong duracion_mensaje_101 = 3000;
+
+bool comienza_mensaje_102 = true; // mensaje guacamaya.com.mx
+ulong contador_inicial_102 = 0;
+ulong contador_actual_102 = 0;
+ulong duracion_mensaje_102 = 3000;
+
+bool comienza_mensaje_103 = true; // mensaje nombre del juego
+ulong contador_inicial_103 = 0;
+ulong contador_actual_103 = 0;
+ulong duracion_mensaje_103 = 3000;
 
 // dora fin void ++++++++++++++++++++++
 
 // reloj para mensajes y led
 ulong previous_time, current_time; // para sincronizar encendido led y duracion de mensajes matriz
+
+// tiempo de medicion de cada round
+ulong tiempo_inicial_round, tiempo_final_round, tiempo_total_round;
 
 // estructura para ESPNOW firma de jugadores inicio de duelo y round OK
 typedef struct flag_listo
@@ -297,27 +335,69 @@ typedef struct struct_mapa
   int dueloactual;    // posicion del duelo a realizar
 
   int numeroderounds; // cantidad de rounds por duelo
-  int roundactual;    // round que se realizara
+  int flujoround;     // round que se realizara
 
   int nround;   // round a pelear
   int tipo;     // tipo de round
   int nrafaga;  // num de tiros en caso de round de rafaga
   int segpausa; // espera entre rounds
+  int mensajebienvenida;
 
-  int avanceprocesotiros; // el avance en el proceso del round desde mensjae hata fin de tiros
+  int flujodetiro; // el avance en el proceso del round desde mensjae hata fin de tiros
+  int flujosolicitudtiempoazulespnow;
+  int tiemporojo;
+  int tiempoazul;
+
+  int resultadoenvio;
+
 } struct_mapa;
 struct_mapa Mapa;
 
+typedef struct datos_control
+{
+  int vsolicitada; // variable solicitada
+  int venviada;    // variable enviada
+  int vleida;      // variable enviada ya procesada
+
+} datos_control;
+
 void reiniciarvaloresMapa()
 {
+  Mapa.mensajebienvenida = 1;
   Mapa.juego = 0;
   Mapa.ubicacionjuego = 1;
+
   Mapa.numerodeduelos = 0;
   Mapa.dueloactual = 0;
-  Mapa.roundactual = 0;
+  Mapa.flujoround = 0;
+
   Mapa.numeroderounds = 0;
-  Mapa.avanceprocesotiros = 1;
+  Mapa.flujodetiro = 1;
+  Mapa.mensajebienvenida = 1;
+
+  Mapa.flujosolicitudtiempoazulespnow = 0;
+  Mapa.tiempoazul = 0;
+  Mapa.tiemporojo = 0;
+
+  Mapa.resultadoenvio = 0;
 }
+
+// Structure example to send data
+// Must match the receiver structure
+typedef struct struct_mensaje
+{
+  int leido;          // 0 NO, 1) SI
+  int dueloactual;    // numero de duelo  ejecutando
+  int roundactual;    // numero de round ejecutado
+  int flagrojo;       // 0) no se envia / 1)se envia
+  float segundosrojo; // rojo duracion en segundos
+  int flagazul;       // 0) no se envia / 1)se envia
+  float segundosazul; // azul duracion en segundos
+} struct_mensaje;
+
+// Create a struct_message called myData
+struct_mensaje paqueteOut;
+struct_mensaje paqueteIn;
 
 // DORA FINAL PARAMETROS ++++++++++++++++++++++++++++++++++++++++++
 
@@ -352,7 +432,7 @@ void loop()
   {
   case CERO: // información de la empresa
   {
-    mensajeBienvenida();
+    iniciaBienvenida();
     break;
     // el Mapa.juego solo se cambia mediante el control RF
   }
@@ -380,12 +460,120 @@ void loop()
 }
 
 // Dora inicio voids----------------------------------
-void mensajeBienvenida()
+// BLOQUE BIENVENIDA
+void iniciaBienvenida() // case de mensajes de bienvenida
 {
-  // En equipo rojo se pone menasje de la empresa, distribución y pagina web
+  switch (Mapa.mensajebienvenida)
+  {
+  case 1: // Duelo de Gamers
+  {
+    mensajeNombreJuego_100();
+    break;
+  }
+  case 2: // KrambitSystems
+  {
+    mensajeKrambitSystems_101();
+    break;
+  }
+  case 3: // www.guacamaya.com.mx
+  {
+    mensajeContrataEn_102();
+    break;
+  }
+  case 4: // distribuciones disponibles
+  {
+    mensajeGuacamaya_103();
+    break;
+  }
+  }
 }
 
-void iniciaJuegoUno()
+void mensajeNombreJuego_100() // nombre DEULO DE GAMERS
+{
+  {
+    if (comienza_mensaje_100)
+    { // inicia tiempo de mensaje
+      contador_inicial_100 = millis();
+      comienza_mensaje_100 = false;
+    }
+    // despliege el mensaje a usuarios mientras tiempo sea menor del rango definido
+    contador_actual_100 = millis();
+    if (contador_actual_100 < (contador_inicial_100 + duracion_mensaje_100))
+    {
+      escribeMensaje100(); // nombre del juego DUELOS GAMERS
+    }
+    else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
+    {
+      // Salida de mensaje y avanza a primer round
+      Mapa.mensajebienvenida = 3; // avanza  siguiente mensaje
+    }
+  }
+}
+void mensajeKrambitSystems_101() // nombre KS
+{
+  if (comienza_mensaje_101)
+  { // inicia tiempo de mensaje
+    contador_inicial_101 = millis();
+    comienza_mensaje_101 = false;
+  }
+  // despliege el mensaje a usuarios mientras tiempo sea menor del rango definido
+  contador_actual_101 = millis();
+  if (contador_actual_101 < (contador_inicial_101 + duracion_mensaje_101))
+  {
+    escribeKrambitSystems101(); // nombre Krambit Systems
+  }
+  else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
+  {
+    // Salida de mensaje y avanza a primer round
+    Mapa.mensajebienvenida = 3; // avanza  siguiente mensaje
+  }
+}
+void mensajeContrataEn_102() // nombre "Contrata en:"
+{
+  if (comienza_mensaje_102)
+  { // inicia tiempo de mensaje
+    contador_inicial_102 = millis();
+    comienza_mensaje_102 = false;
+  }
+  // despliege el mensaje a usuarios mientras tiempo sea menor del rango definido
+  contador_actual_102 = millis();
+  if (contador_actual_102 < (contador_inicial_102 + duracion_mensaje_102))
+  {
+    escribeContrataEn_102(); //
+  }
+  else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
+  {
+    // Salida de mensaje y avanza a primer round
+    Mapa.mensajebienvenida = 4; // avanza  siguiente mensaje
+  }
+}
+void mensajeGuacamaya_103() // nombre "Guacamaya.com.mx"
+{
+  if (comienza_mensaje_103)
+  { // inicia tiempo de mensaje
+    contador_inicial_103 = millis();
+    comienza_mensaje_103 = false;
+  }
+  // despliege el mensaje a usuarios mientras tiempo sea menor del rango definido
+  contador_actual_103 = millis();
+  if (contador_actual_103 < (contador_inicial_103 + duracion_mensaje_103))
+  {
+    escribeGuacamaya_103(); // nombre Krambit Systems
+  }
+  else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
+  {
+    // Salida de mensaje y avanza a primer round
+    Mapa.mensajebienvenida = 1; // Regresa a nombre de juego
+  }
+}
+void escribeMensaje100() {}
+void escribeKrambitSystems101() {}
+void escribeContrataEn_102() {}
+void escribeGuacamaya_103() {}
+// bloque de bienvenida
+
+// BLOQUE JUEGO 1
+void iniciaJuegoUno() // case (Mapa.ubicacionjuego) 1)reinicio- 2)firma- 3)ejecutaduelos
 {
   switch (Mapa.ubicacionjuego) // sala 2 Ubicación en juego
   {
@@ -394,7 +582,7 @@ void iniciaJuegoUno()
     reiniciaDatosJuegoDoraUNO();
     Mapa.numerodeduelos = 5;
     Mapa.dueloactual = 0;
-    Mapa.ubicacionjuego = 2; // avanza a siguiente opcion case
+    Mapa.ubicacionjuego = 2; // avanza
     break;
   }
   case 2: // Ubicacion 2 .- Firma de jugadores Listos !
@@ -413,14 +601,39 @@ void iniciaJuegoUno()
   }
 }
 
-void ejecutandoDuelosUNO()  // Dora
-{                           // Control con duelos a realizar y num de duelo
-  switch (Mapa.dueloactual) // Sala 4 selecciona el duelo consecutivo de 1 a 5
+void reiniciaDatosJuegoDoraUNO() // 1) reinicia jugadores y contadores
+{
+  // base de jugadores en duelos
+  TiradoresRojo[0] = 1;
+  TiradoresRojo[1] = 1;
+  TiradoresRojo[2] = 1;
+  TiradoresRojo[3] = 1;
+  TiradoresRojo[4] = 1;
+  TiradoresAzul[0] = 0;
+  TiradoresAzul[1] = 0;
+  TiradoresAzul[2] = 0;
+  TiradoresAzul[3] = 0;
+  TiradoresAzul[4] = 0;
+
+  // acumuladores solo para juego1 y juego2
+  duelos_ganados_rojo = 0;
+  duelos_ganados_azul = 0;
+  round_ganados_rojo = 0;
+  round_ganador_azul = 0;
+  mejor_velocidad_rojo = 0;
+  mejor_rafaga_rojo = 0;
+  mejor_velocidad_azul = 0;
+  mejor_rafaga_azaul = 0;
+}
+
+void ejecutandoDuelosUNO() // 3) ejecuta duelos cib duelos a realizs y numero de duelos
+{
+  switch (Mapa.dueloactual) // case (Mapa.dueloactual)  1)Reinicio 2-4) duelos
   {
   case 0: // Reiniciar Parametros ROUND  para  duelo
   {
     Mapa.numeroderounds = 3;
-    Mapa.roundactual = 0;
+    Mapa.flujoround = 0;
     Mapa.segpausa = 5;
     Mapa.dueloactual = 1;
     // contadores de los mensajes para que siguan apareciendo insertos
@@ -492,43 +705,18 @@ int jugadorAzulPreparado() // Dora
   return SI;
 }
 
-void reiniciaDatosJuegoDoraUNO()
-{ // Dora
-  // base de jugadores en duelos
-  TiradoresRojo[0] = 1;
-  TiradoresRojo[1] = 1;
-  TiradoresRojo[2] = 1;
-  TiradoresRojo[3] = 1;
-  TiradoresRojo[4] = 1;
-  TiradoresAzul[0] = 0;
-  TiradoresAzul[1] = 0;
-  TiradoresAzul[2] = 0;
-  TiradoresAzul[3] = 0;
-  TiradoresAzul[4] = 0;
-
-  // acumuladores solo para juego1 y juego2
-  duelos_ganados_rojo = 0;
-  duelos_ganados_azul = 0;
-  round_ganados_rojo = 0;
-  round_ganador_azul = 0;
-  mejor_velocidad_rojo = 0;
-  mejor_rafaga_rojo = 0;
-  mejor_velocidad_azul = 0;
-  mejor_rafaga_azaul = 0;
-}
-
 void ejecutandoRounds() // Del 1 al 5
 {                       //
-  switch (Mapa.roundactual)
+  switch (Mapa.flujoround)
   {
   case 0:
   {                               // mensajes de inicio de round
-    mensajeInformacionRound001(); // despues acabar el periodo de mostrado se cambia dentro el Mapa.roundactual
+    mensajeInformacionRound001(); // despues acabar el periodo de mostrado se cambia dentro el Mapa.flujoround
     break;
   }
   case 1: // round 1
   {
-    switch (Mapa.avanceprocesotiros)
+    switch (Mapa.flujodetiro)
     {
     case 1:
     {
@@ -548,32 +736,44 @@ void ejecutandoRounds() // Del 1 al 5
     }
     case 4:
     {
-      mensaje111_005(); // 1 1 1
+      mensaje111_005(); // 1 1 1 // inicia var tiempoinicialround
       break;
     }
     case 5:
     {
-      mensaje3Verdes_006(); // primer disparo
+      mensaje3Verdes_006(); // primer disparo /avanza case 6
       break;
     }
     case 6:
     {
-      mensaje2Verdes_007(); // segundo disparo
+      mensaje2Verdes_007(); // segundo disparo /avanza case 7
       break;
     }
     case 7:
     {
-      mensaje1Verdes_008(); // tercer disparo
+      mensaje1Verdes_008(); // tercer disparo /avanza case 10
       break;
     }
-    case 8:
+    case 10: // tiempo de disparo
     {
-      // muestra 4 disparo en caso de ampliar la condicion del jeugo
+      mensajeTiempoRound_009();
       break;
     }
-    case 10: // fin de round
+    case 11: // Solicita azul y compara decide ganador
     {
-      mensajeFinRound_009();
+      if (Mapa.juego == 1) // no hay equipo azul, se manda un valor default
+      {
+        Mapa.tiempoazul = 5000;
+      }
+      else
+      {
+        mensajeSolicitaTiempoAzul_010();
+      }
+      break;
+    }
+    case 12: // Mostrar ganador
+    {
+      mensajeGanadorRound_011();
       break;
     }
     }
@@ -610,10 +810,117 @@ void mensajeInformacionRound001()
   else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
   {
     // Salida de mensaje y avanza a primer round
-    Mapa.roundactual = 1;
-    Mapa.avanceprocesotiros = 1;
+    Mapa.flujoround = 1;
+    Mapa.flujodetiro = 1;
   }
 }
+
+void mensajeSolicitaTiempoAzul_010()
+{
+  if (comienza_mensaje_010)
+  { // inicia tiempo de mensaje
+    contador_inicial_010 = millis();
+    comienza_mensaje_010 = false;
+    escribeSincronizandoTiempoAzul013();
+    Mapa.flujosolicitudtiempoazulespnow = 1;
+  }
+  switch (Mapa.flujosolicitudtiempoazulespnow)
+  {
+  case 1: // Prepara paquete para enviar por ESPNOw
+  {
+    // datos en paquete para enviar
+    paqueteOut.leido = 0;
+    paqueteOut.dueloactual = Mapa.dueloactual;
+    paqueteOut.roundactual = Mapa.nround;
+    paqueteOut.flagrojo = 1;
+    paqueteOut.segundosrojo = Mapa.tiemporojo;
+    //
+    Mapa.flujosolicitudtiempoazulespnow = 2;
+    break;
+  }
+  case 2: // envia a azul por ESPNOW
+  {
+    // rutina de envio de paquete de espnow
+    // send message via ESP-NOW ejemplo:
+    // esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+
+    Mapa.flujosolicitudtiempoazulespnow = 3;
+    break;
+  }
+  case 3:            // confirma recepcion en equipo azul
+  {                  // temporales las variables para checar la condicion de entrega
+    int result = 1;  // se supone que es global de esp_err_t result
+    int XESP_OK = 1; // condicion de entregado de ESP-NOW
+    if (result == XESP_OK)
+    {
+      Serial.println("Sent with success");
+      Mapa.flujosolicitudtiempoazulespnow = 4;
+    }
+    else
+    {
+      delay(500);
+      Serial.println("Error sending the data");
+      Mapa.flujosolicitudtiempoazulespnow = 2;
+    }
+  case 4: // recibe respuesta de equipo azul
+    // copia el registro recibido a base actual
+    // memcpy(&myData, incomingData, sizeof(myData));
+    if (paqueteIn.leido == 0)
+    {
+      Mapa.tiempoazul = paqueteIn.segundosazul;
+      paqueteIn.leido = 1;
+      Mapa.flujosolicitudtiempoazulespnow = 10;
+    }
+    else
+    {
+      Serial.println("Error receiving the data");
+      delay(500);
+      Mapa.flujosolicitudtiempoazulespnow = 2;
+    }
+    break;
+  }
+
+  case 10: // datos ok
+  {
+    Mapa.flujodetiro = 12; // avanza a mostrar ganador
+    break;
+  }
+  }
+}
+
+void escribeSincronizandoTiempoAzul013() {}
+
+void mensajeGanadorRound_011() // case 11 Mapa.flujodetiro
+{
+  if (comienza_mensaje_011)
+  { // inicia tiempo de mensaje
+    contador_inicial_011 = millis();
+    comienza_mensaje_011 = false;
+  }
+  // despliege el mensaje a usuarios mientras tiempo sea menor del rango definido
+  contador_actual_011 = millis();
+  if (contador_actual_011 < (contador_inicial_011 + duracion_mensaje_011))
+  {
+    if (Mapa.tiemporojo <= Mapa.tiempoazul)
+    {
+      mensajeGanasteRojo013(); // ganaste
+    }
+    else
+    {
+      mensajePerdisteRojo014(); // perdiste
+    }
+  }
+  else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
+  {
+    // Salida de mensaje y avanza a primer round
+    Mapa.flujoround = 1;
+    Mapa.flujodetiro = 1;
+    Mapa.dueloactual++; // incrementa el numero de duelo actual para iniciar un nuevo duelo
+  }
+}
+
+void mensajeGanasteRojo013() {}
+void mensajePerdisteRojo014() {}
 
 void mensajeReady002()
 {
@@ -631,7 +938,7 @@ void mensajeReady002()
   else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
   {
     // Salida de mensaje y avanza a primer round
-    Mapa.avanceprocesotiros = 2; // avanza al mensaje de contador descendente "3 3 3 "
+    Mapa.flujodetiro = 2; // avanza al mensaje de contador descendente "3 3 3 "
   }
 }
 
@@ -651,7 +958,7 @@ void mensaje333_003()
   else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
   {
     // Salida de mensaje y avanza a primer round
-    Mapa.avanceprocesotiros = 3; // avanza al mensaje de contador descendente "2 2 2 "
+    Mapa.flujodetiro = 3; // avanza al mensaje de contador descendente "2 2 2 "
   }
 }
 
@@ -671,7 +978,7 @@ void mensaje222_004()
   else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
   {
     // Salida de mensaje y avanza a primer round
-    Mapa.avanceprocesotiros = 4; // avanza al mensaje de contador descendente "1 1 1 "
+    Mapa.flujodetiro = 4; // avanza al mensaje de contador descendente "1 1 1 "
   }
 }
 
@@ -691,7 +998,8 @@ void mensaje111_005()
   else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
   {
     // Salida de mensaje y avanza a primer round
-    Mapa.avanceprocesotiros = 5; // avanza al mensaje de contador descendente "3 CUADROS VERDES"
+    Mapa.flujodetiro = 5; // avanza al mensaje de contador descendente "3 CUADROS VERDES"
+    tiempo_inicial_round = millis();
   }
 }
 
@@ -716,11 +1024,11 @@ void mensaje3Verdes_006()
   tiros_acumulados++;
   if (tiros_acumulados < tiros_esperados)
   {
-    Mapa.avanceprocesotiros = 6; // avanza a detectar segundo disparo
+    Mapa.flujodetiro = 6; // avanza a detectar segundo disparo
   }
   else
   {
-    Mapa.avanceprocesotiros = 10; // avanza a fin de round
+    Mapa.flujodetiro = 10; // avanza a fin de round
   }
 }
 
@@ -745,15 +1053,15 @@ void mensaje2Verdes_007() // espera segundo disparo
 
   if (tiros_acumulados < tiros_esperados)
   {
-    Mapa.avanceprocesotiros = 7; // avanza a detectar tercer disparo
+    Mapa.flujodetiro = 7; // avanza a detectar tercer disparo
   }
   else // no se ejectua al menos que sean la rafaga de dos disparos
   {
-    Mapa.avanceprocesotiros = 10; // avanza a fin de round
+    Mapa.flujodetiro = 10; // avanza a fin de round
   }
 }
 
-void mensaje1Verdes_008() // espera tercer disparo
+void mensaje1Verdes_008() // espera tercer disparo avanza a final
 {
   if (comienza_mensaje_008)
   { // inicia tiempo de mensaje
@@ -771,21 +1079,19 @@ void mensaje1Verdes_008() // espera tercer disparo
   } while ((detecta_impacto == false) || (contador_actual_008 < (contador_inicial_008 + duracion_mensaje_008)));
   // Salida de mensaje y avanza a 2 cuadros verdes si es rafaga, si es un solo tiro avanza afinal
   tiros_acumulados++;
-
-  if (tiros_acumulados < tiros_esperados)
+  if (tiros_acumulados = tiros_esperados) // detecto 3 disparos y avanza a final de round
   {
-    Mapa.avanceprocesotiros = 8; // avanza a detectar cuarto disparo
-  }
-  else // detecto 3 disparos y avanza a final de round
-  {
-    Mapa.avanceprocesotiros = 10; // avanza a fin de round
+    Mapa.flujodetiro = 10;         // avanza a fin de round
+    tiempo_final_round = millis(); // marca el tiempo dinal del round
   }
 }
 
-void mensajeFinRound_009()
+void mensajeTiempoRound_009()
 {
   if (comienza_mensaje_009)
   { // inicia tiempo de mensaje
+    tiempo_total_round = tiempo_final_round - tiempo_inicial_round;
+    Mapa.tiemporojo = tiempo_total_round; // miliseg
     contador_inicial_009 = millis();
     comienza_mensaje_009 = false;
   }
@@ -793,24 +1099,22 @@ void mensajeFinRound_009()
   contador_actual_009 = millis();
   if (contador_actual_009 < (contador_inicial_009 + duracion_mensaje_009))
   {
-    escribeMensaje009();
+    escribeMensaje009(tiempo_total_round);
   }
   else // termina mostrar mensaje, se sale de aqui y brinca a siguiente paso
   {
     // Salida de mensaje y avanza a primer round
-    Mapa.avanceprocesotiros = 0; // regresa el round a cero
-    Mapa.dueloactual++;          // incrementa el numero de duelo actual para iniciar un nuevo duelo
+    Mapa.flujodetiro = 11; // Solicita azul y calcula ganador
   }
 }
 
-void escribeCuadroRojo007()
-{
-}
-void escribeCuadroRojo008()
-{
-}
+void escribeCuadroRojo007() {}
+void escribeCuadroRojo008() {}
 
-void analizaImpacto()
+void escribeGanaste() {}
+void escribePerdiste() {}
+
+void analizaImpacto() // checa se reciba impacto
 {
   /* Checa que se reciba el impacto
   Cuando detecta el laser de apuntar cambia el color a azul
@@ -819,66 +1123,26 @@ void analizaImpacto()
   detecta_impacto = true;
 }
 
-void escribeCuadroRojo006() // ilumia cuadro flasheando en rojo
+void escribeCuadroRojo006() {} // ilumia cuadro flasheando en rojo
+void escribeMensaje001() {}    // Información de Round
+void escribeMensaje002() {}    // Ready
+void escribeMensaje003() {}    // 3_3_3
+void escribeMensaje004() {}    // 2_2_2
+void escribeMensaje005() {}    // 1_1_1
+void escribeMensaje006() {}    // 3 bloques verdes para marcar el incio del tiro
+void escribeMensaje007() {}    // 2 bloques verdes y 1 azul para marcar 1 impacto ya
+void escribeMensaje008() {}
+void escribeMensaje009(ulong tiempo_total_round)
 {
+  // muestra el tiempo total del round
 }
-
-void escribeMensaje001() // Información de Round
-{
-}
-
-void escribeMensaje002() // Ready
-{
-}
-
-void escribeMensaje003() // 3_3_3
-{
-}
-
-void escribeMensaje004() // 2_2_2
-{
-}
-
-void escribeMensaje005()
-{ // 1_1_1
-}
-
-void escribeMensaje006()  // 3 bloques verdes para marcar el incio del tiro
-{ 
-}
-void escribeMensaje007() // 2 bloques verdes y 1 azul para marcar 1 impacto ya
-{
-}
-
-
-void escribeMensaje008()
-{
-}
-
-void escribeMensaje009()
-{
-}
-
-
-void mensajeDeListoTiradores()
-{
-}
-
-void mensajeNombresTiradores()
-{
-}
+void mensajeDeListoTiradores() {}
+void mensajeNombresTiradores() {}
 void reiniciaDatosDeTiros()
 {
 }
-
-void muestraResultadofinal()
-{
-}
-
-void regresaASalida()
-{
-}
-
+void muestraResultadofinal() {}
+void regresaASalida() {}
 void reiniciaDatosJuego1()
 {
   TiradoresRojo[0] = 1;
